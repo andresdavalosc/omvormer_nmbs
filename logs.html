@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graph Logs</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  
+  <style>
+    body {
+      background-color: #f8f9fa;
+    }
+    .container {
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h2 class="text-center mb-4">📋 Historical Graph Logs</h2>
+
+    <div class="table-responsive">
+      <table class="table table-striped table-hover table-bordered align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Value</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody id="log-table-body">
+          <!-- Sample rows (you can populate this dynamically later) -->
+          <tr>
+            <td>2025-05-09</td>
+            <td>12:11:02</td>
+            <td>74</td>
+            <td>Voltage A</td>
+          </tr>
+          <tr>
+            <td>2025-05-09</td>
+            <td>12:12:02</td>
+            <td>78</td>
+            <td>Amperage</td>
+          </tr>
+          <tr>
+            <td>2025-05-09</td>
+            <td>12:13:02</td>
+            <td>65</td>
+            <td>Temperature</td>
+          </tr>
+          <tr>
+            <td>2025-05-09</td>
+            <td>12:14:02</td>
+            <td>88</td>
+            <td>Voltage B</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Back Button -->
+    <div class="text-center mt-4">
+      <a href="dashboard.html" class="btn btn-secondary">← Back to Dashboard</a>
+    </div>
+  </div>
+
+</body>
+</html>
