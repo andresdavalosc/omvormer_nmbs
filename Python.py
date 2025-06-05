@@ -46,6 +46,7 @@ print("Wachten op 64 bytes van de RS485...")
 
 while True:
     if ser.in_waiting >= 64:
+        ser.flushInput()
         raw_data = ser.read(64)
 
         print("\n📥 64 bytes ontvangen:")
