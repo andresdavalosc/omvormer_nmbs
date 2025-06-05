@@ -46,9 +46,10 @@ print("Wachten op 64 bytes van de RS485...")
 
 while True:
     if ser.in_waiting >= 64:
-        ser.flushInput()
         raw_data = ser.read(64)
-
+        if len(raw_data) < 64:
+           print(f"⚠️ Slechts {len(raw_data)} bytes ontvangen.")
+           continue
         print("\n📥 64 bytes ontvangen:")
         for idx, byte in enumerate(raw_data):
             label = byte_labels.get(idx, f"BYTE_{idx:02}")
