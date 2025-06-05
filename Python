@@ -1,11 +1,5 @@
 import serial
 import time
-import RPi.GPIO as GPIO
-
-# GPIO setup
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BOARD)
-GPIO.setup(12, GPIO.OUT, initial=GPIO.LOW)
 
 # Seriële poort setup
 ser = serial.Serial(
@@ -53,13 +47,14 @@ print("Wachten op 64 bytes van de RS485...")
 while True:
     if ser.in_waiting >= 64:
         raw_data = ser.read(64)
-        
+
         print("\n📥 64 bytes ontvangen:")
         for idx, byte in enumerate(raw_data):
             label = byte_labels.get(idx, f"BYTE_{idx:02}")
-            bit_string = f"{byte:08b}"  # naar 8-bit binair
-            print(f"{label:<20}: {bit_string}")
-        
-        print("-" * 40)
-        time.sleep(0.5)
+            bit_string = f"{byte:08b}"         # binair
+            dec_value = f"{byte:3d}"           # decimaal
+            hex_value = f"0x{byte:02X}"         # hexadecimaal
+            print(f"{label:<20}: {bit_string}   {dec_value}   {hex_value}")
 
+        print("-" * 50)
+        time.sleep(0.5)
