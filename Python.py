@@ -2,62 +2,80 @@ import serial
 import time
 import requests
 
-# InfluxDB configuratie
-INFLUX_URL = "https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/write"
+# Config InfluxDB
 ORG = "WIE"
-BUCKET = "demo_data"   # <-- aangepaste bucketnaam
-TOKEN = "qERdzyL-L614vuyteUK8ZviPFRS69Ja4mkj_tkVI5UyBXgXCWMvN3Xpjp8YrJPJ8XofYiLDh6ghuTbMuiy1qXQ=="
+BUCKET = "demo_data"
+TOKEN = "EY-7AoVga8YlHwtphYvVWOEiwZmq7BABTGXeOrU-GxnZRA2TOWwMBRj2oWGz29kYyYpLHOUMYBuNMQShVF0Hkg=="
+URL = f"https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/write?org={ORG}&bucket={BUCKET}&precision=s"
 
+# Serial poort config
+SERIAL_PORT = "/dev/ttyS0"
+BAUDRATE = 9600
+TIMEOUT = 1
+
+# 32 metingen, elk 2 bytes = 16 bit unsigned int
 measurement_names = [
-    "AVG_VIN2", "AVG_IDC", "AVG_VPH3", "AVG_VPH2", "AVG_VPH1",
-    "AVG_IPH3", "AVG_IPH2", "AVG_IPH1", "INV_REG", "AVG_VBRIDGE1",
-    "AVG_VBRIDGE2", "UNUSED_1", "UNUSED_2", "UNUSED_3", "UNUSED_4",
-    "UNUSED_5", "AVG_TMP_CONV", "AVG_TMP_INV", "AVG_TMP_TRAFO",
-    "AVG_TMP_ROOM1", "AVG_TMP_ROOM2", "AVG_TMP_LPF1", "AVG_TMP_LPF2",
-    "STATUS0", "STATUS1", "STATUS2", "STATUS3", "STATUS4",
-    "GPIO_OUT", "GPIO_IN", "STATUS", "ERROR"
+    "IDX_AVG_VIN2", "IDX_AVG_IDC", "IDX_AVG_VPH3", "IDX_AVG_VPH2", "IDX_AVG_VPH1",
+    "IDX_AVG_IPH3", "IDX_AVG_IPH2", "IDX_AVG_IPH1", "IDX_INV_REG", "IDX_AVG_VBRIDGE1",
+    "IDX_AVG_VBRIDGE2", "IDX_AVG_TMP_CONV", "IDX_AVG_TMP_INV", "IDX_AVG_TMP_TRAFO",
+    "IDX_AVG_TMP_ROOM1", "IDX_AVG_TMP_ROOM2", "IDX_AVG_TMP_LPF1", "IDX_AVG_TMP_LPF2",
+    "IDX_STATUS0", "IDX_STATUS1", "IDX_STATUS2", "IDX_STATUS3", "IDX_STATUS4",
+    "IDX_GPIO_OUT", "IDX_GPIO_IN", "IDX_STATUS", "IDX_ERROR",
+    "BYTE_27", "BYTE_28", "BYTE_29", "BYTE_30", "BYTE_31"
 ]
 
-ser = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=1)
+def to_binary_str(val):
+    return format(val, '016b')
 
-def send_to_influx(pairs):
-    timestamp = int(time.time())
+def to_hex_str(val):
+    return f"0x{val:04X}"
+
+def print_values(vals):
+    for i, val in enumerate(vals):
+        name = measurement_names[i] if i < len(measurement_names) else f"BYTE_{i}"
+        bin_str = to_binary_str(val)
+        dec_str = f"{val:6d}"
+        hex_str = to_hex_str(val)
+        print(f"{name:<18}: {bin_str}  {dec_str}  {hex_str}")
+
+def send_to_influx(vals, timestamp):
     lines = []
-
-    for name, val in pairs.items():
-        lines.append(f'omvormer,name={name} value={val} {timestamp}')
-
-    full_hex = ''.join(f"{(val >> 8) & 0xFF:02X}{val & 0xFF:02X}" for val in pairs.values())
-    lines.append(f'omvormer,name=full_hex value="{full_hex}" {timestamp}')
-
+    for i, val in enumerate(vals):
+        measurement = measurement_names[i] if i < len(measurement_names) else f"BYTE_{i}"
+        # Line protocol: measurement value=<val> <timestamp>
+        lines.append(f"{measurement} value={val} {timestamp}")
     payload = "\n".join(lines)
     headers = {
         "Authorization": f"Token {TOKEN}",
         "Content-Type": "text/plain; charset=utf-8"
     }
-
-    response = requests.post(
-        f"{INFLUX_URL}?org={ORG}&bucket={BUCKET}&precision=s",
-        headers=headers,
-        data=payload
-    )
-
-    if response.status_code != 204:
-        print(f"⚠️ Fout bij versturen: {response.status_code} → {response.text}")
+    resp = requests.post(URL, headers=headers, data=payload)
+    if resp.status_code != 204:
+        print(f"⚠️ Fout bij InfluxDB schrijven: {resp.status_code} {resp.text}")
     else:
-        print(f"✅ Data verstuurd @ {timestamp}")
+        print(f"✅ Data verstuurd naar InfluxDB @ {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))}")
 
-while True:
-    raw = ser.read(64)
-    if len(raw) == 64:
-        pairs = {}
-        for i in range(32):
-            hi = raw[i*2]
-            lo = raw[i*2 + 1]
-            val = (hi << 8) + lo
-            pairs[measurement_names[i]] = val
-        send_to_influx(pairs)
-    else:
-        print("⏳ Wacht op volledige 64-byte frame...")
+def main():
+    ser = serial.Serial(SERIAL_PORT, baudrate=BAUDRATE, timeout=TIMEOUT)
+    print("🔌 Serial verbinding geopend, wacht op data...")
+    while True:
+        raw = ser.read(64)
+        if len(raw) == 64:
+            # Parse 32 x 2-byte unsigned integers (big endian)
+            values = []
+            for i in range(0, 64, 2):
+                val = (raw[i] << 8) + raw[i+1]
+                values.append(val)
 
-    time.sleep(5)
+            print("\n📥 Nieuwe data ontvangen:")
+            print_values(values)
+
+            ts = int(time.time())
+            send_to_influx(values, ts)
+        else:
+            print("⏳ Wacht op volledige 64 bytes frame...")
+
+        time.sleep(5)
+
+if __name__ == "__main__":
+    main()
