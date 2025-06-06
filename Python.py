@@ -5,7 +5,7 @@ import requests
 # InfluxDB instellingen
 ORG = "WIE"
 BUCKET = "demo_data"
-TOKEN = "oP5zoJmaCWPtz-DNZItqQO8V8DMdprtYLCT-63u0rEUQXOsnSdZ3veArE8HkIhg2yOw9-WETxhuZ8gYQtNq6nA=="
+TOKEN = "ei0X2aYvLiDFfov9gN8AWOlQ3yQAzMblhZ0Ch_5GEVB4NGOV1k_Uw_OvsF3ZHKhzVFYXB9zVvG2qj8GgkWhEfw=="
 URL = f"https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/write?org={ORG}&bucket={BUCKET}&precision=s"
 
 headers = {
