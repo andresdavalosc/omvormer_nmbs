@@ -42,8 +42,11 @@ def send_to_influx(vals, timestamp):
     lines = []
     for i, val in enumerate(vals):
         measurement = measurement_names[i] if i < len(measurement_names) else f"BYTE_{i}"
-        # Line protocol: measurement value=<val> <timestamp>
         lines.append(f"{measurement} value={val} {timestamp}")
+    
+    # Voeg RPi_ON toe met waarde 1 (RPi aan)
+    lines.append(f"RPi_ON value=1 {timestamp}")
+    
     payload = "\n".join(lines)
     headers = {
         "Authorization": f"Token {TOKEN}",
