@@ -33,7 +33,8 @@ def send_to_influx(byte_values):
 
     # 2. Volledige hexstring ook versturen
     hex_str = ''.join(f"{byte:02X}" for byte in byte_values)
-    lines.append(f'omvormer,name=full_hex value="{hex_str}" {timestamp}')
+    lines.append(f'omvormer,name=full_hex hex="{hex_str}" {timestamp}')
+
 
     # 3. Versturen naar Influx
     payload = "\n".join(lines)
