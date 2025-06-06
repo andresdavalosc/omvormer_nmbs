@@ -6,7 +6,7 @@ import requests
 INFLUX_URL = "https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/write"
 ORG = "WIE"
 BUCKET = "demo_data"   # <-- aangepaste bucketnaam
-TOKEN = "2hMjwsBQ8KZFOJhswwCkY3y4sGWyiJLpZSMWNgO07MJ-pU5sljMBLqsLKZM8WQVrfYizasKpNtZHUJ1I-nq9tA=="
+TOKEN = "qERdzyL-L614vuyteUK8ZviPFRS69Ja4mkj_tkVI5UyBXgXCWMvN3Xpjp8YrJPJ8XofYiLDh6ghuTbMuiy1qXQ=="
 
 measurement_names = [
     "AVG_VIN2", "AVG_IDC", "AVG_VPH3", "AVG_VPH2", "AVG_VPH1",
