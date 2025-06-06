@@ -1,81 +1,63 @@
 import serial
-import struct
-from influxdb_client import InfluxDBClient, Point
-from influxdb_client.client.write_api import SYNCHRONOUS
-from datetime import datetime
+import time
+import requests
 
-# InfluxDB config
-INFLUX_URL = "https://eu-central-1-1.aws.cloud2.influxdata.com"
-INFLUX_TOKEN = "2hMjwsBQ8KZFOJhswwCkY3y4sGWyiJLpZSMWNgO07MJ-pU5sljMBLqsLKZM8WQVrfYizasKpNtZHUJ1I-nq9tA=="
-INFLUX_ORG = "WIE"
-INFLUX_BUCKET = "omvormer_bucket"
+# InfluxDB configuratie
+INFLUX_URL = "https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/write"
+ORG = "WIE"
+BUCKET = "demo_data"   # <-- aangepaste bucketnaam
+TOKEN = "2hMjwsBQ8KZFOJhswwCkY3y4sGWyiJLpZSMWNgO07MJ-pU5sljMBLqsLKZM8WQVrfYizasKpNtZHUJ1I-nq9tA=="
 
-# Seriële poort config
-SERIAL_PORT = "/dev/ttyS0"
-BAUD_RATE = 9600
+measurement_names = [
+    "AVG_VIN2", "AVG_IDC", "AVG_VPH3", "AVG_VPH2", "AVG_VPH1",
+    "AVG_IPH3", "AVG_IPH2", "AVG_IPH1", "INV_REG", "AVG_VBRIDGE1",
+    "AVG_VBRIDGE2", "UNUSED_1", "UNUSED_2", "UNUSED_3", "UNUSED_4",
+    "UNUSED_5", "AVG_TMP_CONV", "AVG_TMP_INV", "AVG_TMP_TRAFO",
+    "AVG_TMP_ROOM1", "AVG_TMP_ROOM2", "AVG_TMP_LPF1", "AVG_TMP_LPF2",
+    "STATUS0", "STATUS1", "STATUS2", "STATUS3", "STATUS4",
+    "GPIO_OUT", "GPIO_IN", "STATUS", "ERROR"
+]
 
-# Mapping: index (start byte) → naam
-measurement_map = {
-    0: "AVG_VIN2",
-    2: "AVG_IDC",
-    4: "AVG_VPH3",
-    6: "AVG_VPH2",
-    8: "AVG_VPH1",
-    10: "AVG_IPH3",
-    12: "AVG_IPH2",
-    14: "AVG_IPH1",
-    16: "INV_REG",
-    18: "AVG_VBRIDGE1",
-    20: "AVG_VBRIDGE2",
-    22: "AVG_TMP_CONV",
-    24: "AVG_TMP_INV",
-    26: "AVG_TMP_TRAFO",
-    28: "AVG_TMP_ROOM1",
-    30: "AVG_TMP_ROOM2",
-    32: "AVG_TMP_LPF1",
-    34: "AVG_TMP_LPF2",
-    36: "STATUS0",
-    38: "STATUS1",
-    40: "STATUS2",
-    42: "STATUS3",
-    44: "STATUS4",
-    46: "GPIO_OUT",
-    48: "GPIO_IN",
-    50: "STATUS",
-    52: "ERROR",
-    54: "BYTE_27",
-    56: "BYTE_28",
-    58: "BYTE_29",
-    60: "BYTE_30",
-    62: "BYTE_31"
-}
+ser = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=1)
 
-# Connectie met InfluxDB
-client = InfluxDBClient(url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG)
-write_api = client.write_api(write_options=SYNCHRONOUS)
+def send_to_influx(pairs):
+    timestamp = int(time.time())
+    lines = []
 
-# Open seriële poort
-ser = serial.Serial(SERIAL_PORT, BAUD_RATE)
+    for name, val in pairs.items():
+        lines.append(f'omvormer,name={name} value={val} {timestamp}')
 
-def parse_bytes(data_bytes):
-    parsed = {}
-    for i in range(0, 64, 2):
-        name = measurement_map.get(i, f"BYTE_{i}")
-        value = struct.unpack('>H', data_bytes[i:i+2])[0]  # big-endian 2 bytes
-        parsed[name] = value
-    return parsed
+    full_hex = ''.join(f"{(val >> 8) & 0xFF:02X}{val & 0xFF:02X}" for val in pairs.values())
+    lines.append(f'omvormer,name=full_hex value="{full_hex}" {timestamp}')
 
-def send_to_influx(parsed_data):
-    timestamp = datetime.utcnow()
-    for name, value in parsed_data.items():
-        point = Point(name).field("value", value).time(timestamp)
-        write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point)
+    payload = "\n".join(lines)
+    headers = {
+        "Authorization": f"Token {TOKEN}",
+        "Content-Type": "text/plain; charset=utf-8"
+    }
 
-print("🟢 Luisteren op seriële poort...")
+    response = requests.post(
+        f"{INFLUX_URL}?org={ORG}&bucket={BUCKET}&precision=s",
+        headers=headers,
+        data=payload
+    )
+
+    if response.status_code != 204:
+        print(f"⚠️ Fout bij versturen: {response.status_code} → {response.text}")
+    else:
+        print(f"✅ Data verstuurd @ {timestamp}")
 
 while True:
-    if ser.in_waiting >= 64:
-        raw_data = ser.read(64)
-        parsed = parse_bytes(raw_data)
-        send_to_influx(parsed)
-        print(f"[{datetime.now()}] ✅ Gegevens verzonden naar InfluxDB: {parsed}")
+    raw = ser.read(64)
+    if len(raw) == 64:
+        pairs = {}
+        for i in range(32):
+            hi = raw[i*2]
+            lo = raw[i*2 + 1]
+            val = (hi << 8) + lo
+            pairs[measurement_names[i]] = val
+        send_to_influx(pairs)
+    else:
+        print("⏳ Wacht op volledige 64-byte frame...")
+
+    time.sleep(5)
