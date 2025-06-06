@@ -11,8 +11,8 @@ ser = serial.Serial(
     timeout=1
 )
 
-# Indexen en namen
-byte_labels = {
+# 32 namen voor elk 16-bits waarde (2 bytes per label)
+word_labels = {
     0: "IDX_AVG_VIN2",
     1: "IDX_AVG_IDC",
     2: "IDX_AVG_VPH3",
@@ -24,6 +24,11 @@ byte_labels = {
     8: "IDX_INV_REG",
     9: "IDX_AVG_VBRIDGE1",
     10: "IDX_AVG_VBRIDGE2",
+    11: "BYTE_11",
+    12: "BYTE_12",
+    13: "BYTE_13",
+    14: "BYTE_14",
+    15: "BYTE_15",
     16: "IDX_AVG_TMP_CONV",
     17: "IDX_AVG_TMP_INV",
     18: "IDX_AVG_TMP_TRAFO",
@@ -48,15 +53,23 @@ while True:
     if ser.in_waiting >= 64:
         raw_data = ser.read(64)
         if len(raw_data) < 64:
-           print(f"⚠️ Slechts {len(raw_data)} bytes ontvangen.")
-           continue
-        print("\n📥 64 bytes ontvangen:")
-        for idx, byte in enumerate(raw_data):
-            label = byte_labels.get(idx, f"BYTE_{idx:02}")
-            bit_string = f"{byte:08b}"         # binair
-            dec_value = f"{byte:3d}"           # decimaal
-            hex_value = f"0x{byte:02X}"         # hexadecimaal
-            print(f"{label:<20}: {bit_string}   {dec_value}   {hex_value}")
+            print(f"⚠️ Slechts {len(raw_data)} bytes ontvangen.")
+            continue
 
-        print("-" * 50)
+        print("\n📥 64 bytes ontvangen:")
+        for i in range(0, 64, 2):
+            index = i // 2
+            label = word_labels.get(index, f"WORD_{index:02}")
+
+            msb = raw_data[i]
+            lsb = raw_data[i + 1]
+            value = (msb << 8) | lsb  # MSB first
+
+            bin_str = f"{value:016b}"
+            dec_str = f"{value:5d}"
+            hex_str = f"0x{value:04X}"
+
+            print(f"{label:<20}: {bin_str}   {dec_str}   {hex_str}")
+
+        print("-" * 60)
         time.sleep(0.5)
