@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="nl">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Omvormer Data Tabel</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    body {
+      font-family: monospace;
+      background: #f0f0f0;
+      padding: 20px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      max-width: 900px;
+      background: white;
+    }
+
+    th,
+    td {
+      border: 1px solid #999;
+      padding: 6px 12px;
+      text-align: left;
+    }
+
+    th {
+      background: #444;
+      color: white;
+    }
+
+    #lastUpdate {
+      margin-bottom: 12px;
+      font-weight: bold;
+    }
+
+    #dateFilter {
+      margin-bottom: 20px;
+    }
+
+    /* Ledje styles */
+    #rpiStatus {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+
+    #rpiLed {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: gray;
+      margin-right: 8px;
+      box-shadow: 0 0 6px #555;
+      transition: background-color 0.3s, box-shadow 0.3s;
+    }
+
+    #rpiLed.green {
+      background-color: #4CAF50;
+      box-shadow: 0 0 10px #4CAF50;
+    }
+
+    #rpiLed.red {
+      background-color: #f44336;
+      box-shadow: 0 0 10px #f44336;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Omvormer Data</h1>
+
+  <div id="rpiStatus">
+    <div id="rpiLed"></div>
+    RPi status: <span id="rpiStatusText">Onbekend</span>
+  </div>
+
+  <div id="lastUpdate">Laatst bijgewerkt: -</div>
+
+  <label for="dateInput">Datum selecteren:</label>
+  <input type="date" id="dateInput" />
+  <button onclick="loadData()">Laad data</button>
+
+  <table id="dataTable">
+    <thead>
+      <tr>
+        <th>Naam</th>
+        <th>Binair</th>
+        <th>Decimaal</th>
+        <th>Hex</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const measurementNames = [
+      "IDX_AVG_VIN2", "IDX_AVG_IDC", "IDX_AVG_VPH3", "IDX_AVG_VPH2", "IDX_AVG_VPH1",
+      "IDX_AVG_IPH3", "IDX_AVG_IPH2", "IDX_AVG_IPH1", "IDX_INV_REG", "IDX_AVG_VBRIDGE1",
+      "IDX_AVG_VBRIDGE2", "IDX_AVG_TMP_CONV", "IDX_AVG_TMP_INV", "IDX_AVG_TMP_TRAFO",
+      "IDX_AVG_TMP_ROOM1", "IDX_AVG_TMP_ROOM2", "IDX_AVG_TMP_LPF1", "IDX_AVG_TMP_LPF2",
+      "IDX_STATUS0", "IDX_STATUS1", "IDX_STATUS2", "IDX_STATUS3", "IDX_STATUS4",
+      "IDX_GPIO_OUT", "IDX_GPIO_IN", "IDX_STATUS", "IDX_ERROR",
+      "BYTE_27", "BYTE_28", "BYTE_29", "BYTE_30", "BYTE_31"
+    ];
+
+    const ORG = "WIE";
+    const BUCKET = "demo_data";
+    const TOKEN = "EY-7AoVga8YlHwtphYvVWOEiwZmq7BABTGXeOrU-GxnZRA2TOWwMBRj2oWGz29kYyYpLHOUMYBuNMQShVF0Hkg==";
+    const INFLUX_URL = "https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/query?org=" + ORG;
+
+    function binair(dec) {
+      return ("0000000000000000" + dec.toString(2)).slice(-16);
+    }
+
+    function hex(dec) {
+      return "0x" + dec.toString(16).toUpperCase().padStart(4, "0");
+    }
+
+    async function fetchData(date) {
+      let start = date ? date + "T00:00:00Z" : new Date().toISOString().slice(0, 10) + "T00:00:00Z";
+      let stop = date ? date + "T23:59:59Z" : new Date().toISOString();
+
+      const fluxQuery = `
+        from(bucket: "${BUCKET}")
+          |> range(start: ${start}, stop: ${stop})
+          |> filter(fn: (r) => contains(value: r["_measurement"], set: [${measurementNames.map(name => `"${name}"`).join(", ")}]))
+          |> last()
+          |> pivot(rowKey:["_time"], columnKey: ["_measurement"], valueColumn: "_value")
+      `;
+
+      const response = await fetch(INFLUX_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Token ${TOKEN}`,
+          "Content-Type": "application/vnd.flux",
+          Accept: "application/csv"
+        },
+        body: fluxQuery
+      });
+
+      const csvText = await response.text();
+
+      if (!response.ok) {
+        throw new Error(`Fout ${response.status}: ${csvText}`);
+      }
+
+      const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+      return parsed.data;
+    }
+
+    function updateTable(data) {
+      const tbody = document.querySelector("#dataTable tbody");
+      tbody.innerHTML = "";
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = "<tr><td colspan='4'>Geen data gevonden voor deze datum</td></tr>";
+        return;
+      }
+
+      const row = data[0]; // Laatste record
+      for (let name of measurementNames) {
+        const val = row[name];
+        if (val === undefined || val === "") continue;
+
+        const dec = parseFloat(val);
+        const b = binair(dec);
+        const h = hex(dec);
+
+        const htmlRow = `
+          <tr>
+            <td>${name}</td>
+            <td>${b}</td>
+            <td>${dec}</td>
+            <td>${h}</td>
+          </tr>`;
+        tbody.insertAdjacentHTML("beforeend", htmlRow);
+      }
+
+      const timestamp = row._time || new Date().toISOString();
+      document.getElementById("lastUpdate").textContent = "Laatst bijgewerkt: " + new Date(timestamp).toLocaleString();
+    }
+
+    async function fetchRpiStatus() {
+      const fluxQuery = `
+        from(bucket: "${BUCKET}")
+          |> range(start: -30s)
+          |> filter(fn: (r) => r["_measurement"] == "RPi_ON")
+          |> last()
+      `;
+
+      try {
+        const response = await fetch(INFLUX_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${TOKEN}`,
+            "Content-Type": "application/vnd.flux",
+            Accept: "application/csv"
+          },
+          body: fluxQuery
+        });
+
+        if (!response.ok) {
+          throw new Error(`Fout ${response.status}`);
+        }
+
+        const csvText = await response.text();
+        const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+        const data = parsed.data;
+
+        if (data.length === 0) {
+          setRpiLed(false, "Geen data");
+          return;
+        }
+
+        const lastRecord = data[0];
+        const val = parseInt(lastRecord._value);
+        const timeStr = lastRecord._time;
+        const lastTime = new Date(timeStr).getTime();
+        const now = Date.now();
+
+        if (val === 1 && (now - lastTime) < 10000) {
+          setRpiLed(true, "Aan");
+        } else {
+          setRpiLed(false, "Uit / Offline");
+        }
+
+      } catch (e) {
+        setRpiLed(false, "Fout bij ophalen");
+        console.error(e);
+      }
+    }
+
+    function setRpiLed(isOn, text) {
+      const led = document.getElementById("rpiLed");
+      const statusText = document.getElementById("rpiStatusText");
+      if (isOn) {
+        led.classList.add("green");
+        led.classList.remove("red");
+      } else {
+        led.classList.add("red");
+        led.classList.remove("green");
+      }
+      statusText.textContent = text;
+    }
+
+    async function loadData() {
+      const dateInput = document.getElementById("dateInput").value;
+      document.getElementById("lastUpdate").textContent = "Laden...";
+
+      try {
+        const result = await fetchData(dateInput);
+        updateTable(result);
+      } catch (e) {
+        document.getElementById("lastUpdate").textContent = "Fout bij laden data: " + e.message;
+        updateTable([]);
+      }
+    }
+
+    // Initieel laden
+    loadData();
+
+    // RPi status elke 10 seconden controleren
+    fetchRpiStatus();
+    setInterval(fetchRpiStatus, 10000);
+  </script>
+
+</body>
+
+</html>
