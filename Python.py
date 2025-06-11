@@ -1,4 +1,3 @@
-updated_code = """
 import serial
 import time
 import requests
@@ -93,6 +92,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-"""
-
-updated_code[:1500]  # Show a preview of the updated code to confirm with user before continuing.
