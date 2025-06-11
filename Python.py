@@ -1,6 +1,8 @@
+updated_code = """
 import serial
 import time
 import requests
+import sys
 
 # Config InfluxDB
 ORG = "WIE"
@@ -43,42 +45,54 @@ def send_to_influx(vals, timestamp):
     for i, val in enumerate(vals):
         measurement = measurement_names[i] if i < len(measurement_names) else f"BYTE_{i}"
         lines.append(f"{measurement} value={val} {timestamp}")
-    
-    # Voeg RPi_ON toe met waarde 1 (RPi aan)
     lines.append(f"RPi_ON value=1 {timestamp}")
-    
-    payload = "\n".join(lines)
+
+    payload = "\\n".join(lines)
     headers = {
         "Authorization": f"Token {TOKEN}",
         "Content-Type": "text/plain; charset=utf-8"
     }
-    resp = requests.post(URL, headers=headers, data=payload)
-    if resp.status_code != 204:
-        print(f"⚠️ Fout bij InfluxDB schrijven: {resp.status_code} {resp.text}")
-    else:
-        print(f"✅ Data verstuurd naar InfluxDB @ {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))}")
+    try:
+        resp = requests.post(URL, headers=headers, data=payload)
+        if resp.status_code != 204:
+            print(f"⚠️ Fout bij InfluxDB schrijven: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"⚠️ Fout bij verzenden naar InfluxDB: {e}")
 
 def main():
-    ser = serial.Serial(SERIAL_PORT, baudrate=BAUDRATE, timeout=TIMEOUT)
-    print("🔌 Serial verbinding geopend, wacht op data...")
     while True:
-        raw = ser.read(64)
-        if len(raw) == 64:
-            # Parse 32 x 2-byte unsigned integers (big endian)
-            values = []
-            for i in range(0, 64, 2):
-                val = (raw[i] << 8) + raw[i+1]
-                values.append(val)
+        try:
+            ser = serial.Serial(SERIAL_PORT, baudrate=BAUDRATE, timeout=TIMEOUT)
+            print("🔌 Serial verbinding geopend, wacht op data...")
+            break
+        except Exception as e:
+            print(f"🔁 Fout bij openen seriële poort: {e} - probeer opnieuw over 6 seconden")
+            time.sleep(6)
 
-            print("\n📥 Nieuwe data ontvangen:")
+    while True:
+        try:
+            raw = ser.read(64)
+            if len(raw) == 64:
+                values = [(raw[i] << 8) + raw[i+1] for i in range(0, 64, 2)]
+            else:
+                print("⏳ Geen volledige data ontvangen, vul aan met nullen...")
+                values = [0] * 32
+
+            print("\\n📥 Nieuwe data ontvangen:")
             print_values(values)
 
             ts = int(time.time())
             send_to_influx(values, ts)
-        else:
-            print("⏳ Wacht op volledige 64 bytes frame...")
+        except KeyboardInterrupt:
+            print("🛑 Script gestopt door gebruiker.")
+            break
+        except Exception as e:
+            print(f"⚠️ Algemeen probleem: {e}")
 
-        time.sleep(5)
+        time.sleep(6)
 
 if __name__ == "__main__":
     main()
+"""
+
+updated_code[:1500]  # Show a preview of the updated code to confirm with user before continuing.
