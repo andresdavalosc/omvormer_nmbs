@@ -1,7 +1,6 @@
 import serial
 import time
 import requests
-import sys
 
 # Config InfluxDB
 ORG = "WIE"
@@ -9,12 +8,12 @@ BUCKET = "demo_data"
 TOKEN = "EY-7AoVga8YlHwtphYvVWOEiwZmq7BABTGXeOrU-GxnZRA2TOWwMBRj2oWGz29kYyYpLHOUMYBuNMQShVF0Hkg=="
 URL = f"https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/write?org={ORG}&bucket={BUCKET}&precision=s"
 
-# Serial poort config
+# Serial config
 SERIAL_PORT = "/dev/ttyS0"
 BAUDRATE = 9600
 TIMEOUT = 1
 
-# 32 metingen, elk 2 bytes = 16 bit unsigned int
+# Metingen namen
 measurement_names = [
     "IDX_AVG_VIN2", "IDX_AVG_IDC", "IDX_AVG_VPH3", "IDX_AVG_VPH2", "IDX_AVG_VPH1",
     "IDX_AVG_IPH3", "IDX_AVG_IPH2", "IDX_AVG_IPH1", "IDX_INV_REG", "IDX_AVG_VBRIDGE1",
@@ -44,49 +43,66 @@ def send_to_influx(vals, timestamp):
     for i, val in enumerate(vals):
         measurement = measurement_names[i] if i < len(measurement_names) else f"BYTE_{i}"
         lines.append(f"{measurement} value={val} {timestamp}")
-    lines.append(f"RPi_ON value=1 {timestamp}")
 
-    payload = "\\n".join(lines)
+    lines.append(f"RPi_ON value=1 {timestamp}")
+    payload = "\n".join(lines)
     headers = {
         "Authorization": f"Token {TOKEN}",
         "Content-Type": "text/plain; charset=utf-8"
     }
+
     try:
         resp = requests.post(URL, headers=headers, data=payload)
         if resp.status_code != 204:
             print(f"⚠️ Fout bij InfluxDB schrijven: {resp.status_code} {resp.text}")
+        else:
+            print(f"✅ Data verstuurd naar InfluxDB @ {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))}")
     except Exception as e:
-        print(f"⚠️ Fout bij verzenden naar InfluxDB: {e}")
+        print(f"❌ Verbindingsfout InfluxDB: {e}")
 
-def main():
+def open_serial():
     while True:
         try:
             ser = serial.Serial(SERIAL_PORT, baudrate=BAUDRATE, timeout=TIMEOUT)
-            print("🔌 Serial verbinding geopend, wacht op data...")
-            break
+            print("🔌 Verbonden met serial poort.")
+            return ser
         except Exception as e:
-            print(f"🔁 Fout bij openen seriële poort: {e} - probeer opnieuw over 6 seconden")
+            print(f"⚠️ Kan serial poort niet openen: {e}")
+            print("🔁 Probeer opnieuw over 6 seconden...")
             time.sleep(6)
 
+def main():
+    ser = open_serial()
     while True:
         try:
             raw = ser.read(64)
-            if len(raw) == 64:
-                values = [(raw[i] << 8) + raw[i+1] for i in range(0, 64, 2)]
-            else:
-                print("⏳ Geen volledige data ontvangen, vul aan met nullen...")
-                values = [0] * 32
+            if len(raw) != 64:
+                print("⏳ Geen volledige 64 bytes ontvangen... vul met nullen.")
+                raw = bytes([0] * 64)
 
-            print("\\n📥 Nieuwe data ontvangen:")
+            values = []
+            for i in range(0, 64, 2):
+                val = (raw[i] << 8) + raw[i + 1]
+                values.append(val)
+
+            print("\n📥 Nieuwe data ontvangen:")
             print_values(values)
 
             ts = int(time.time())
             send_to_influx(values, ts)
+        except serial.SerialException as e:
+            print(f"🚫 Serial fout: {e}")
+            print("🔁 Herstarten serial verbinding...")
+            ser.close()
+            time.sleep(6)
+            ser = open_serial()
         except KeyboardInterrupt:
-            print("🛑 Script gestopt door gebruiker.")
+            print("🛑 Script handmatig gestopt.")
             break
         except Exception as e:
-            print(f"⚠️ Algemeen probleem: {e}")
+            print(f"❌ Onbekende fout: {e}")
+            print("⏱️ Wachten en doorgaan...")
+            time.sleep(6)
 
         time.sleep(6)
 
