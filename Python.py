@@ -8,14 +8,10 @@ BUCKET = "demo_data"
 TOKEN = "EY-7AoVga8YlHwtphYvVWOEiwZmq7BABTGXeOrU-GxnZRA2TOWwMBRj2oWGz29kYyYpLHOUMYBuNMQShVF0Hkg=="
 URL = f"https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/write?org={ORG}&bucket={BUCKET}&precision=s"
 
-# Serial config
+# Serial instellingen
 SERIAL_PORT = "/dev/ttyS0"
 BAUDRATE = 9600
 TIMEOUT = 1
-
-# Retry config
-MAX_RETRIES = 10
-RETRY_DELAY = 6  # seconden
 
 # Metingen namen
 measurement_names = [
@@ -65,27 +61,48 @@ def send_to_influx(vals, timestamp):
         print(f"❌ Verbindingsfout InfluxDB: {e}")
 
 def open_serial_with_retry():
-    for attempt in range(1, MAX_RETRIES + 1):
+    while True:
         try:
             ser = serial.Serial(SERIAL_PORT, baudrate=BAUDRATE, timeout=TIMEOUT)
-            print(f"🔌 Verbonden met serial poort op poging {attempt}.")
+            print("🔌 Verbonden met serial poort.")
             return ser
-        except serial.SerialException as e:
-            print(f"⚠️ Kan serial poort niet openen (poging {attempt}/{MAX_RETRIES}): {e}")
-            if attempt == MAX_RETRIES:
-                print("❌ Max aantal pogingen bereikt, probeer later opnieuw.")
-                return None
-            print(f"🔁 Probeer opnieuw over {RETRY_DELAY} seconden...")
+        except Exception as e:
+            print(f"⚠️ Kan serial poort niet openen: {e}")
+            print("🔁 Probeer opnieuw over 6 seconden...")
+            time.sleep(6)
+
+def init_modem():
+    MAX_RETRIES = 10
+    RETRY_DELAY = 3
+    device_available = False
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            ser = serial.Serial('/dev/ttyUSB2', baudrate=115200, timeout=1)
+        except serial.SerialException:
+            print(f"📡 Modem niet gevonden op poging {attempt}/{MAX_RETRIES}. Wachten {RETRY_DELAY} seconden...")
             time.sleep(RETRY_DELAY)
+        else:
+            device_available = True
+            break
+
+    if device_available:
+        print("📶 Modem gevonden. PIN code instellen...")
+        try:
+            ser.write(b'AT+CPIN?\r\n')
+            time.sleep(1)
+            ser.write(b'AT+CPIN=2713\r\n')
+            time.sleep(1)
+        except Exception as e:
+            print(f"⚠️ Fout bij verzenden van PIN: {e}")
+        finally:
+            ser.close()
+    else:
+        print("❌ Modem niet beschikbaar. Ga verder zonder sim-initialisatie.")
 
 def main():
+    init_modem()  # Eerst modem init
     ser = open_serial_with_retry()
-    if ser is None:
-        print("❌ Geen verbinding met serial device. Script stopt niet, blijft proberen.")
-        while True:
-            ser = open_serial_with_retry()
-            if ser is not None:
-                break
 
     while True:
         try:
@@ -104,29 +121,19 @@ def main():
 
             ts = int(time.time())
             send_to_influx(values, ts)
-
         except serial.SerialException as e:
             print(f"🚫 Serial fout: {e}")
-            print("🔁 Herstarten serial verbinding na fout...")
-            try:
-                ser.close()
-            except Exception:
-                pass
-            time.sleep(RETRY_DELAY)
+            print("🔁 Herstarten serial verbinding...")
+            ser.close()
+            time.sleep(6)
             ser = open_serial_with_retry()
-            if ser is None:
-                print("❌ Kan serial verbinding niet herstellen, blijft proberen...")
-                while ser is None:
-                    time.sleep(RETRY_DELAY)
-                    ser = open_serial_with_retry()
-
         except KeyboardInterrupt:
             print("🛑 Script handmatig gestopt.")
             break
-
         except Exception as e:
             print(f"❌ Onbekende fout: {e}")
             print("⏱️ Wachten en doorgaan...")
+            time.sleep(6)
 
         time.sleep(6)
 
