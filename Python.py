@@ -13,6 +13,10 @@ SERIAL_PORT = "/dev/ttyS0"
 BAUDRATE = 9600
 TIMEOUT = 1
 
+# Retry config
+MAX_RETRIES = 10
+RETRY_DELAY = 6  # seconden
+
 # Metingen namen
 measurement_names = [
     "IDX_AVG_VIN2", "IDX_AVG_IDC", "IDX_AVG_VPH3", "IDX_AVG_VPH2", "IDX_AVG_VPH1",
@@ -60,19 +64,29 @@ def send_to_influx(vals, timestamp):
     except Exception as e:
         print(f"❌ Verbindingsfout InfluxDB: {e}")
 
-def open_serial():
-    while True:
+def open_serial_with_retry():
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
             ser = serial.Serial(SERIAL_PORT, baudrate=BAUDRATE, timeout=TIMEOUT)
-            print("🔌 Verbonden met serial poort.")
+            print(f"🔌 Verbonden met serial poort op poging {attempt}.")
             return ser
-        except Exception as e:
-            print(f"⚠️ Kan serial poort niet openen: {e}")
-            print("🔁 Probeer opnieuw over 6 seconden...")
-            time.sleep(6)
+        except serial.SerialException as e:
+            print(f"⚠️ Kan serial poort niet openen (poging {attempt}/{MAX_RETRIES}): {e}")
+            if attempt == MAX_RETRIES:
+                print("❌ Max aantal pogingen bereikt, probeer later opnieuw.")
+                return None
+            print(f"🔁 Probeer opnieuw over {RETRY_DELAY} seconden...")
+            time.sleep(RETRY_DELAY)
 
 def main():
-    ser = open_serial()
+    ser = open_serial_with_retry()
+    if ser is None:
+        print("❌ Geen verbinding met serial device. Script stopt niet, blijft proberen.")
+        while True:
+            ser = open_serial_with_retry()
+            if ser is not None:
+                break
+
     while True:
         try:
             raw = ser.read(64)
@@ -90,19 +104,29 @@ def main():
 
             ts = int(time.time())
             send_to_influx(values, ts)
+
         except serial.SerialException as e:
             print(f"🚫 Serial fout: {e}")
-            print("🔁 Herstarten serial verbinding...")
-            ser.close()
-            time.sleep(6)
-            ser = open_serial()
+            print("🔁 Herstarten serial verbinding na fout...")
+            try:
+                ser.close()
+            except Exception:
+                pass
+            time.sleep(RETRY_DELAY)
+            ser = open_serial_with_retry()
+            if ser is None:
+                print("❌ Kan serial verbinding niet herstellen, blijft proberen...")
+                while ser is None:
+                    time.sleep(RETRY_DELAY)
+                    ser = open_serial_with_retry()
+
         except KeyboardInterrupt:
             print("🛑 Script handmatig gestopt.")
             break
+
         except Exception as e:
             print(f"❌ Onbekende fout: {e}")
             print("⏱️ Wachten en doorgaan...")
-            time.sleep(6)
 
         time.sleep(6)
 
