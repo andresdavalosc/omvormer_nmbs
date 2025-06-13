@@ -3,7 +3,7 @@ import sys
 import os
 
 # Pad naar je lokale repo folder
-REPO_DIR = "/pad/naar/je/repo"
+REPO_DIR = "/home/wie/omvormer_nmbs"
 
 # Bestandsnaam die je wil runnen
 SCRIPT_NAME = "Python.py"
