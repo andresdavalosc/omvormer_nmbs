@@ -1,6 +1,11 @@
 import serial
 import time
 import requests
+import os
+import certifi
+
+# Forceer gebruik van het juiste SSL-certificaat
+os.environ['SSL_CERT_FILE'] = certifi.where()
 
 # 🌐 InfluxDB-configuratie
 ORG = "WIE"
