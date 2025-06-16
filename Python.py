@@ -111,7 +111,7 @@ def open_serial():
 
 # 🚀 Main loop
 def main():
-    init_modem()
+    #init_modem()
     ser = open_serial()
     while True:
         try:
