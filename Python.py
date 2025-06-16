@@ -28,6 +28,7 @@ measurement_names = [
     "IDX_GPIO_OUT", "IDX_GPIO_IN", "IDX_STATUS", "IDX_ERROR"
 ]
 
+'''
 # 🔁 Initieer 4G-modem met AT-commando's
 def init_modem():
     MAX_RETRIES = 10
@@ -57,7 +58,7 @@ def init_modem():
             ser.close()
     else:
         print("❌ Geen verbinding met 4G-modem. Script gaat door zonder PIN.")
-
+'''
 # 📄 Format helpers
 def to_binary_str(val):
     return format(val, '016b')
