@@ -7,6 +7,9 @@ import certifi
 # Forceer gebruik van het juiste SSL-certificaat
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
+#test
+print("dit is een test où te zien als de automatische pull heeft gewerkt")
+
 # 🌐 InfluxDB-configuratie
 ORG = "WIE"
 BUCKET = "demo_data"
