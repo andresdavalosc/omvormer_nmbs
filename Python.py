@@ -1,14 +1,14 @@
 import serial
 import time
 import requests
-import os
-import certifi
+#import os
+#import certifi
 
 # Forceer gebruik van het juiste SSL-certificaat
-os.environ['SSL_CERT_FILE'] = certifi.where()
+#os.environ['SSL_CERT_FILE'] = certifi.where()
 
 #test
-print("dit is een test où te zien als de automatische pull heeft gewerkt")
+#print("dit is een test où te zien als de automatische pull heeft gewerkt")
 
 # 🌐 InfluxDB-configuratie
 ORG = "WIE"
@@ -36,7 +36,7 @@ measurement_names = [
     "IDX_GPIO_OUT", "IDX_GPIO_IN", "IDX_STATUS", "IDX_ERROR"
 ]
 
-'''
+
 # 🔁 Initieer 4G-modem met AT-commando's
 def init_modem():
     MAX_RETRIES = 10
@@ -58,7 +58,7 @@ def init_modem():
         try:
             ser.write(b'AT+CPIN?\r\n')
             time.sleep(1)
-            ser.write(b'AT+CPIN=6899\r\n')  # ✅ Pas hier je PIN aan indien nodig
+            ser.write(b'AT+CPIN=2713\r\n')  # ✅ Pas hier je PIN aan indien nodig
             time.sleep(1)
         except Exception as e:
             print(f"⚠️ Fout bij verzenden van AT-commando's: {e}")
@@ -66,7 +66,7 @@ def init_modem():
             ser.close()
     else:
         print("❌ Geen verbinding met 4G-modem. Script gaat door zonder PIN.")
-'''
+
 # 📄 Format helpers
 def to_binary_str(val):
     return format(val, '016b')
