@@ -58,18 +58,12 @@ def init_modem():
                 print(f"⚠️ Fout bij AT-commando's: {e}")
             finally:
                 ser.close()
-            # Herlaad systemd services zodra modem OK is
-            print("🔄 Herlaad systemd services...")
-            subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True)
-            return True
+            break
         except serial.SerialException as e:
             if "Device or resource busy" in str(e):
                 print(f"⚠️ 4G-modem is in gebruik door een ander proces. Wacht 3 seconden...")
             else:
                 print(f"📡 4G-modem niet gevonden. Opnieuw proberen in 3 seconden...")
-            time.sleep(3)
-        except Exception as e:
-            print(f"⚠️ Onverwachte fout bij modem init: {e}")
             time.sleep(3)
 
 def send_to_influx(vals, timestamp):
@@ -108,7 +102,7 @@ def open_serial():
             time.sleep(6)
 
 def main():
-    modem_online = init_modem()
+    init_modem()
     ser = open_serial()
 
     while True:
@@ -125,12 +119,7 @@ def main():
                 values.append(val)
 
             ts = int(time.time())
-
-            # Controleer modemstatus vóór verzenden
-            if modem_online:
-                send_to_influx(values, ts)
-            else:
-                print("📡 Modem offline, sla data niet op. Wacht op verbinding...")
+            send_to_influx(values, ts)
 
         except serial.SerialException as e:
             print(f"🚫 Serial fout: {e}")
@@ -148,10 +137,14 @@ def main():
 
         except Exception as e:
             print(f"❌ Onbekende fout: {e}")
+            print("🔁 Herlaad systemd-service en probeer opnieuw...")
+            try:
+                subprocess.run(["sudo", "systemctl", "daemon-reexec"])
+                print("✅ Systemd opnieuw geladen met 'daemon-reexec'")
+            except Exception as reload_err:
+                print(f"⚠️ Fout bij herladen van systemd: {reload_err}")
             print("⏱️ Wachten 6s en doorgaan...")
-
-        # Controle modemstatus herhaaldelijk checken
-        modem_online = init_modem()
+            time.sleep(6)
 
         time.sleep(6)
 
