@@ -2,6 +2,7 @@ import serial
 import time
 import requests
 import os
+import subprocess
 
 # 🌐 InfluxDB-configuratie
 ORG = "WIE"
@@ -57,12 +58,18 @@ def init_modem():
                 print(f"⚠️ Fout bij AT-commando's: {e}")
             finally:
                 ser.close()
-            break
+            # Herlaad systemd services zodra modem OK is
+            print("🔄 Herlaad systemd services...")
+            subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True)
+            return True
         except serial.SerialException as e:
             if "Device or resource busy" in str(e):
                 print(f"⚠️ 4G-modem is in gebruik door een ander proces. Wacht 3 seconden...")
             else:
                 print(f"📡 4G-modem niet gevonden. Opnieuw proberen in 3 seconden...")
+            time.sleep(3)
+        except Exception as e:
+            print(f"⚠️ Onverwachte fout bij modem init: {e}")
             time.sleep(3)
 
 def send_to_influx(vals, timestamp):
@@ -101,7 +108,7 @@ def open_serial():
             time.sleep(6)
 
 def main():
-    init_modem()
+    modem_online = init_modem()
     ser = open_serial()
 
     while True:
@@ -118,7 +125,12 @@ def main():
                 values.append(val)
 
             ts = int(time.time())
-            send_to_influx(values, ts)
+
+            # Controleer modemstatus vóór verzenden
+            if modem_online:
+                send_to_influx(values, ts)
+            else:
+                print("📡 Modem offline, sla data niet op. Wacht op verbinding...")
 
         except serial.SerialException as e:
             print(f"🚫 Serial fout: {e}")
@@ -137,7 +149,9 @@ def main():
         except Exception as e:
             print(f"❌ Onbekende fout: {e}")
             print("⏱️ Wachten 6s en doorgaan...")
-            time.sleep(6)
+
+        # Controle modemstatus herhaaldelijk checken
+        modem_online = init_modem()
 
         time.sleep(6)
 
