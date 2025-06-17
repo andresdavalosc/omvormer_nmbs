@@ -1,6 +1,7 @@
 import serial
 import time
 import requests
+import os
 
 # 🌐 InfluxDB-configuratie
 ORG = "WIE"
@@ -8,7 +9,7 @@ BUCKET = "demo_data"
 TOKEN = "EY-7AoVga8YlHwtphYvVWOEiwZmq7BABTGXeOrU-GxnZRA2TOWwMBRj2oWGz29kYyYpLHOUMYBuNMQShVF0Hkg=="
 URL = f"https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/write?org={ORG}&bucket={BUCKET}&precision=s"
 
-# 🔌 RS485-instellingen (omvormer)
+# 🔌 RS485-instellingen
 SERIAL_PORT = "/dev/ttyS0"
 BAUDRATE = 9600
 TIMEOUT = 1
@@ -28,23 +29,6 @@ measurement_names = [
     "IDX_GPIO_OUT", "IDX_GPIO_IN", "IDX_STATUS", "IDX_ERROR"
 ]
 
-# 🔁 Initieer 4G-modem met AT-commando's
-def init_modem():
-    while True:
-        try:
-            ser = serial.Serial(MODEM_PORT, baudrate=MODEM_BAUDRATE, timeout=1)
-            print("📶 4G-modem verbonden. Verstuur AT-commando's...")
-            ser.write(b'AT+CPIN?\r\n')
-            time.sleep(1)
-            ser.write(b'AT+CPIN=2713\r\n')  # ⚠️ PIN-code indien vereist
-            time.sleep(1)
-            ser.close()
-            break
-        except serial.SerialException:
-            print("📡 4G-modem niet gevonden. Opnieuw proberen in 3 seconden...")
-            time.sleep(3)
-
-# 📄 Format helpers
 def to_binary_str(val):
     return format(val, '016b')
 
@@ -59,33 +43,52 @@ def print_values(vals):
         hex_str = to_hex_str(val)
         print(f"{name:<18}: {bin_str}  {dec_str}  {hex_str}")
 
-# ⬆️ Stuur data naar InfluxDB
+def init_modem():
+    while True:
+        try:
+            ser = serial.Serial(MODEM_PORT, baudrate=MODEM_BAUDRATE, timeout=1)
+            print("📶 4G-modem verbonden. Verstuur AT-commando's...")
+            try:
+                ser.write(b'AT+CPIN?\r\n')
+                time.sleep(1)
+                ser.write(b'AT+CPIN=2713\r\n')  # Pas je PIN aan indien nodig
+                time.sleep(1)
+            except Exception as e:
+                print(f"⚠️ Fout bij AT-commando's: {e}")
+            finally:
+                ser.close()
+            break
+        except serial.SerialException as e:
+            if "Device or resource busy" in str(e):
+                print(f"⚠️ 4G-modem is in gebruik door een ander proces. Wacht 3 seconden...")
+            else:
+                print(f"📡 4G-modem niet gevonden. Opnieuw proberen in 3 seconden...")
+            time.sleep(3)
+
 def send_to_influx(vals, timestamp):
     lines = []
     for i, val in enumerate(vals):
         measurement = measurement_names[i] if i < len(measurement_names) else f"BYTE_{i}"
         lines.append(f"{measurement} value={val} {timestamp}")
     lines.append(f"RPi_ON value=1 {timestamp}")
-    payload = "\\n".join(lines)
+    payload = "\n".join(lines)
 
     headers = {
         "Authorization": f"Token {TOKEN}",
         "Content-Type": "text/plain; charset=utf-8"
     }
 
-    while True:
-        try:
-            resp = requests.post(URL, headers=headers, data=payload)
-            if resp.status_code == 204:
-                print(f"✅ Data verzonden naar InfluxDB @ {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))}")
-                break
-            else:
-                print(f"⚠️ Fout bij InfluxDB: {resp.status_code} {resp.text}. Proberen opnieuw in 3s...")
-        except Exception as e:
-            print(f"❌ Verbindingsfout met InfluxDB: {e}. Proberen opnieuw in 3s...")
-        time.sleep(3)
+    try:
+        resp = requests.post(URL, headers=headers, data=payload)
+        if resp.status_code != 204:
+            print(f"⚠️ Fout bij schrijven naar InfluxDB: {resp.status_code} {resp.text}")
+        else:
+            print(f"✅ Data verzonden naar InfluxDB @ {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))}")
+            print("📦 Verzonden waarden:")
+            print_values(vals)
+    except Exception as e:
+        print(f"❌ Verbindingsfout met InfluxDB: {e}")
 
-# 📟 RS485-poort openen met retries
 def open_serial():
     while True:
         try:
@@ -94,10 +97,9 @@ def open_serial():
             return ser
         except Exception as e:
             print(f"⚠️ Kan RS485-poort niet openen: {e}")
-            print("🔁 Opnieuw proberen in 3 seconden...")
-            time.sleep(3)
+            print("🔁 Opnieuw proberen in 6 seconden...")
+            time.sleep(6)
 
-# 🚀 Main loop
 def main():
     init_modem()
     ser = open_serial()
@@ -106,8 +108,8 @@ def main():
         try:
             raw = ser.read(64)
             if len(raw) != 64:
-                print("⚠️ Data niet beschikbaar of onvolledig.")
-                time.sleep(3)
+                print(f"❌ Data niet beschikbaar of onvolledig ({len(raw)} bytes ontvangen). Wachten 6 seconden...")
+                time.sleep(6)
                 continue
 
             values = []
@@ -115,20 +117,27 @@ def main():
                 val = (raw[i] << 8) + raw[i + 1]
                 values.append(val)
 
-            print("\\n📥 Ontvangen data:")
-            print_values(values)
-
             ts = int(time.time())
             send_to_influx(values, ts)
 
         except serial.SerialException as e:
             print(f"🚫 Serial fout: {e}")
-            ser.close()
+            print("🔁 Herstart RS485-verbinding...")
+            try:
+                ser.close()
+            except:
+                pass
+            time.sleep(6)
             ser = open_serial()
+
+        except KeyboardInterrupt:
+            print("🛑 Script handmatig gestopt.")
+            break
 
         except Exception as e:
             print(f"❌ Onbekende fout: {e}")
-            time.sleep(3)
+            print("⏱️ Wachten 6s en doorgaan...")
+            time.sleep(6)
 
         time.sleep(6)
 
