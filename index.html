@@ -4,50 +4,59 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Omvormer Data Tabel</title>
+  <title>Omvormer Data Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <style>
+    /* Reset en basis */
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: monospace;
+      font-family: monospace, monospace;
       background: #f0f0f0;
+      margin: 0;
       padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
     }
 
-    table {
-      border-collapse: collapse;
+    h1 {
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    /* Container */
+    .container {
       width: 100%;
-      max-width: 900px;
+      max-width: 1100px;
       background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
     }
 
-    th,
-    td {
-      border: 1px solid #999;
-      padding: 6px 12px;
-      text-align: left;
+    /* Status en controls bovenaan */
+    #topControls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
     }
 
-    th {
-      background: #444;
-      color: white;
-    }
-
-    #lastUpdate {
-      margin-bottom: 12px;
-      font-weight: bold;
-    }
-
-    #dateFilter {
-      margin-bottom: 20px;
-    }
-
-    /* Ledje styles */
     #rpiStatus {
       display: flex;
       align-items: center;
-      margin-bottom: 15px;
       font-weight: bold;
       font-size: 1.1em;
+      white-space: nowrap;
     }
 
     #rpiLed {
@@ -61,55 +70,169 @@
     }
 
     #rpiLed.green {
-      background-color: #4CAF50;
-      box-shadow: 0 0 10px #4CAF50;
+      background-color: #4caf50;
+      box-shadow: 0 0 10px #4caf50;
     }
 
     #rpiLed.red {
       background-color: #f44336;
       box-shadow: 0 0 10px #f44336;
     }
+
+    #downloadLogContainer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    #downloadLogContainer label {
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    #downloadLogContainer input[type="date"] {
+      padding: 6px 10px;
+      font-size: 1em;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    #downloadBtn {
+      padding: 7px 16px;
+      font-weight: bold;
+      cursor: pointer;
+      background-color: #444;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      transition: background-color 0.3s;
+      white-space: nowrap;
+    }
+
+    #downloadBtn:hover {
+      background-color: #666;
+    }
+
+    #downloadStatus {
+      font-style: italic;
+      min-width: 160px;
+      color: #555;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Laatst bijgewerkt */
+    #lastUpdate {
+      font-weight: bold;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    /* Tabel styling */
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      display: block;
+    }
+
+    th,
+    td {
+      border: 1px solid #999;
+      padding: 6px 10px;
+      text-align: left;
+      min-width: 100px;
+      word-break: break-word;
+    }
+
+    th {
+      background: #444;
+      color: white;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #f9f9f9;
+    }
+
+    /* Grafieken container */
+    #chartsContainer {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    /* Responsive tweaks */
+    @media (max-width: 600px) {
+      #topControls {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      #downloadLogContainer {
+        width: 100%;
+        justify-content: flex-start;
+      }
+
+      table {
+        font-size: 0.85em;
+      }
+    }
   </style>
 </head>
 
 <body>
+  <div class="container">
+    <h1>Omvormer Data Dashboard</h1>
 
-  <h1>Omvormer Data</h1>
+    <div id="topControls">
+      <div id="rpiStatus">
+        <div id="rpiLed"></div>
+        RPi status: <span id="rpiStatusText">Onbekend</span>
+      </div>
 
-  <div id="rpiStatus">
-    <div id="rpiLed"></div>
-    RPi status: <span id="rpiStatusText">Onbekend</span>
+      <div id="downloadLogContainer">
+        <label for="logDateInput">Download data vanaf (max 3 dagen geleden):</label>
+        <input type="date" id="logDateInput" />
+        <button id="downloadBtn">Download log</button>
+        <span id="downloadStatus"></span>
+      </div>
+    </div>
+
+    <div id="lastUpdate">Laatst bijgewerkt: -</div>
+
+    <table id="dataTable">
+      <thead>
+        <tr>
+          <th>Naam</th>
+          <th>Binair</th>
+          <th>Decimaal</th>
+          <th>Hex</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h2>📊 Live Grafieken (Laatste 30 minuten)</h2>
+    <div id="chartsContainer"></div>
   </div>
-
-  <div id="lastUpdate">Laatst bijgewerkt: -</div>
-
-  <label for="dateInput">Datum selecteren:</label>
-  <input type="date" id="dateInput" />
-  <button onclick="loadData()">Laad data</button>
-
-  <table id="dataTable">
-    <thead>
-      <tr>
-        <th>Naam</th>
-        <th>Binair</th>
-        <th>Decimaal</th>
-        <th>Hex</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
 
   <script>
     const measurementNames = [
       "IDX_AVG_VIN2", "IDX_AVG_IDC", "IDX_AVG_VPH3", "IDX_AVG_VPH2", "IDX_AVG_VPH1",
       "IDX_AVG_IPH3", "IDX_AVG_IPH2", "IDX_AVG_IPH1", "IDX_INV_REG", "IDX_AVG_VBRIDGE1",
-      "IDX_AVG_VBRIDGE2", "BYTE_11", "BYTE_12", "BYTE_13", "BYTE_14", "BYTE_15",
-      "IDX_AVG_TMP_CONV", "IDX_AVG_TMP_INV", "IDX_AVG_TMP_TRAFO", "IDX_AVG_TMP_ROOM1",
-      "IDX_AVG_TMP_ROOM2", "IDX_AVG_TMP_LPF1", "IDX_AVG_TMP_LPF2",
+      "IDX_AVG_VBRIDGE2", "IDX_AVG_TMP_CONV", "IDX_AVG_TMP_INV", "IDX_AVG_TMP_TRAFO",
+      "IDX_AVG_TMP_ROOM1", "IDX_AVG_TMP_ROOM2", "IDX_AVG_TMP_LPF1", "IDX_AVG_TMP_LPF2",
       "IDX_STATUS0", "IDX_STATUS1", "IDX_STATUS2", "IDX_STATUS3", "IDX_STATUS4",
-      "IDX_GPIO_OUT", "IDX_GPIO_IN", "IDX_STATUS", "IDX_ERROR"
+      "IDX_GPIO_OUT", "IDX_GPIO_IN", "IDX_STATUS", "IDX_ERROR",
+      "BYTE_27", "BYTE_28", "BYTE_29", "BYTE_30", "BYTE_31"
     ];
-
 
     const ORG = "WIE";
     const BUCKET = "demo_data";
@@ -124,14 +247,13 @@
       return "0x" + dec.toString(16).toUpperCase().padStart(4, "0");
     }
 
-    async function fetchData(date) {
-      let start = date ? date + "T00:00:00Z" : new Date().toISOString().slice(0, 10) + "T00:00:00Z";
-      let stop = date ? date + "T23:59:59Z" : new Date().toISOString();
-
+    // Data ophalen: laatste waarden per meting (voor tabel)
+    async function fetchData() {
+      // Range: laatste 10 minuten (voor tabel, neem laatste punt)
       const fluxQuery = `
         from(bucket: "${BUCKET}")
-          |> range(start: ${start}, stop: ${stop})
-          |> filter(fn: (r) => contains(value: r["_measurement"], set: [${measurementNames.map(name => `"${name}"`).join(", ")}]))
+          |> range(start: -10m)
+          |> filter(fn: (r) => contains(value: r["_measurement"], set: [${measurementNames.map(n => `"${n}"`).join(", ")}]))
           |> last()
           |> pivot(rowKey:["_time"], columnKey: ["_measurement"], valueColumn: "_value")
       `;
@@ -146,47 +268,202 @@
         body: fluxQuery
       });
 
+      if (!response.ok) {
+        throw new Error("Fout bij ophalen data: " + response.statusText);
+      }
+
       const csvText = await response.text();
+      return Papa.parse(csvText, { header: true, dynamicTyping: true }).data[0];
+    }
+
+    // Data ophalen: laatste 30 minuten voor grafieken
+    async function fetchChartData(name) {
+      const fluxQuery = `
+        from(bucket: "${BUCKET}")
+          |> range(start: -30m)
+          |> filter(fn: (r) => r._measurement == "${name}")
+          |> filter(fn: (r) => r._field == "value")
+          |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+          |> yield()
+      `;
+
+      const response = await fetch(INFLUX_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Token ${TOKEN}`,
+          "Content-Type": "application/vnd.flux",
+          Accept: "application/csv"
+        },
+        body: fluxQuery
+      });
 
       if (!response.ok) {
-        throw new Error(`Fout ${response.status}: ${csvText}`);
+        throw new Error("Fout bij ophalen grafiekdata: " + response.statusText);
       }
 
-      const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
-      return parsed.data;
+      const csvText = await response.text();
+      return Papa.parse(csvText, { header: true, dynamicTyping: true }).data.filter(r => r._time && r._value !== undefined);
     }
 
-    function updateTable(data) {
-      const tbody = document.querySelector("#dataTable tbody");
-      tbody.innerHTML = "";
+    // Tabel vullen
+    async function updateTable() {
+      try {
+        const data = await fetchData();
+        const tbody = document.querySelector("#dataTable tbody");
+        tbody.innerHTML = "";
+        for (const name of measurementNames) {
+          let value = data[name];
+          if (value === undefined) value = 0;
+          const bin = binair(value);
+          const dec = value;
+          const hx = hex(value);
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${name}</td><td>${bin}</td><td>${dec}</td><td>${hx}</td>`;
+          tbody.appendChild(tr);
+        }
+        document.getElementById("lastUpdate").textContent = "Laatst bijgewerkt: " + new Date().toLocaleString();
+      } catch (e) {
+        console.warn("Fout bij updaten tabel:", e);
+      }
+    }
 
-      if (!data || data.length === 0) {
-        tbody.innerHTML = "<tr><td colspan='4'>Geen data gevonden voor deze datum</td></tr>";
+    // Grafieken bouwen en updaten
+    let charts = {};
+    async function updateCharts() {
+      const container = document.getElementById("chartsContainer");
+      try {
+        for (const name of measurementNames) {
+          let chart = charts[name];
+          const data = await fetchChartData(name);
+          // Maak series geschikt voor ApexCharts
+          const seriesData = data.map(d => {
+            return [new Date(d._time).getTime(), d._value];
+          });
+
+          if (!chart) {
+            // Maak nieuwe chart
+            const div = document.createElement("div");
+            div.id = "chart_" + name;
+            div.style.minHeight = "280px";
+            div.style.backgroundColor = "#fff";
+            div.style.borderRadius = "6px";
+            div.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)";
+            container.appendChild(div);
+
+            chart = new ApexCharts(div, {
+              chart: {
+                type: "line",
+                height: 280,
+                animations: { enabled: true },
+                zoom: { enabled: false },
+                toolbar: { show: false }
+              },
+              series: [{ name: name, data: seriesData }],
+              xaxis: {
+                type: "datetime",
+                labels: { format: "HH:mm" },
+                range: 30 * 60 * 1000 // laatste 30 min
+              },
+              yaxis: { decimalsInFloat: 2 },
+              stroke: { curve: "smooth" },
+              title: { text: name, align: "left", style: { fontSize: "14px" } },
+              tooltip: { x: { format: "dd-MM HH:mm" } },
+              theme: { mode: "light" },
+              grid: { borderColor: "#eee" }
+            });
+
+            charts[name] = chart;
+            await chart.render();
+          } else {
+            // Update bestaande chart data
+            chart.updateSeries([{ data: seriesData }]);
+          }
+        }
+      } catch (e) {
+        console.warn("Kan grafiek niet laden:", e);
+      }
+    }
+
+    // Download log knop functionaliteit
+    function formatDateToISO(date) {
+      return date.toISOString().split("T")[0];
+    }
+
+    function getMaxDate() {
+      const today = new Date();
+      return formatDateToISO(today);
+    }
+
+    function getMinDate() {
+      const today = new Date();
+      today.setDate(today.getDate() - 3);
+      return formatDateToISO(today);
+    }
+
+    // Datumveld instellen bij laden
+    const logDateInput = document.getElementById("logDateInput");
+    logDateInput.setAttribute("max", getMaxDate());
+    logDateInput.setAttribute("min", getMinDate());
+    logDateInput.value = getMaxDate();
+
+    async function downloadLogData() {
+      const startDate = logDateInput.value;
+      if (!startDate) {
+        alert("Selecteer een datum om te downloaden");
         return;
       }
+      const downloadStatus = document.getElementById("downloadStatus");
+      downloadStatus.textContent = "Bezig met downloaden...";
+      try {
+        const nowISO = new Date().toISOString();
+        const fluxQuery = `
+          from(bucket: "${BUCKET}")
+            |> range(start: ${startDate}T00:00:00Z, stop: ${nowISO})
+            |> filter(fn: (r) => contains(value: r["_measurement"], set: [${measurementNames.map(name => `"${name}"`).join(", ")}]))
+            |> pivot(rowKey:["_time"], columnKey: ["_measurement"], valueColumn: "_value")
+            |> keep(columns: ["_time", ${measurementNames.map(name => `"${name}"`).join(", ")}])
+        `;
 
-      const row = data[0]; // Laatste record
-      for (let name of measurementNames) {
-        const val = row[name];
-        if (val === undefined || val === "") continue;
+        const response = await fetch("https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/query?org=" + ORG, {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${TOKEN}`,
+            "Content-Type": "application/vnd.flux",
+            Accept: "application/csv"
+          },
+          body: fluxQuery
+        });
 
-        const dec = parseFloat(val);
-        const b = binair(dec);
-        const h = hex(dec);
+        if (!response.ok) {
+          throw new Error(`Fout bij ophalen data: ${response.statusText}`);
+        }
 
-        const htmlRow = `
-          <tr>
-            <td>${name}</td>
-            <td>${b}</td>
-            <td>${dec}</td>
-            <td>${h}</td>
-          </tr>`;
-        tbody.insertAdjacentHTML("beforeend", htmlRow);
+        const csvText = await response.text();
+
+        // Blob maken en download triggeren
+        const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `OmvormerDataVanaf_${startDate}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        URL.revokeObjectURL(url);
+
+        downloadStatus.textContent = "Download voltooid!";
+        setTimeout(() => {
+          downloadStatus.textContent = "";
+        }, 4000);
+
+      } catch (e) {
+        downloadStatus.textContent = "Fout: " + e.message;
       }
-
-      const timestamp = row._time || new Date().toISOString();
-      document.getElementById("lastUpdate").textContent = "Laatst bijgewerkt: " + new Date(timestamp).toLocaleString();
     }
+
+    document.getElementById("downloadBtn").addEventListener("click", downloadLogData);
 
     async function fetchRpiStatus() {
       const fluxQuery = `
@@ -251,27 +528,20 @@
       statusText.textContent = text;
     }
 
-    async function loadData() {
-      const dateInput = document.getElementById("dateInput").value;
-      document.getElementById("lastUpdate").textContent = "Laden...";
 
-      try {
-        const result = await fetchData(dateInput);
-        updateTable(result);
-      } catch (e) {
-        document.getElementById("lastUpdate").textContent = "Fout bij laden data: " + e.message;
-        updateTable([]);
-      }
+    // Simulatie dat de RPi altijd online is, kan je aanpassen
+    fetchRpiStatus(true);
+
+    // Periodiek data updaten
+    async function refreshAll() {
+      await updateTable();
+      await updateCharts();
     }
 
-    // Initieel laden
-    loadData();
-
-    // RPi status elke 10 seconden controleren
-    fetchRpiStatus();
-    setInterval(fetchRpiStatus, 10000);
+    refreshAll();
+    setInterval(fetchRpiStatus, 3000);
+    setInterval(refreshAll, 3000); // iedere minuut update
   </script>
-
 </body>
 
 </html>
