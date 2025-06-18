@@ -2,6 +2,7 @@ import serial
 import time
 import requests
 import sys
+import systemd.daemon
 
 # 🌐 InfluxDB-configuratie
 ORG = "WIE"
@@ -14,7 +15,7 @@ SERIAL_PORT = "/dev/ttyS0"
 BAUDRATE = 9600
 TIMEOUT = 1
 
-# 📡 4G-modem instellingen
+# 🛱 4G-modem instellingen
 MODEM_PORT = "/dev/ttyUSB2"
 MODEM_BAUDRATE = 115200
 
@@ -44,7 +45,6 @@ def print_values(vals):
         print(f"{name:<18}: {bin_str}  {dec_str}  {hex_str}")
 
 def init_modem():
-    import serial
     while True:
         try:
             ser = serial.Serial(MODEM_PORT, baudrate=MODEM_BAUDRATE, timeout=1)
@@ -52,7 +52,7 @@ def init_modem():
             try:
                 ser.write(b'AT+CPIN?\r\n')
                 time.sleep(1)
-                ser.write(b'AT+CPIN=2713\r\n')  # Pas je PIN aan indien nodig
+                ser.write(b'AT+CPIN=2713\r\n')
                 time.sleep(1)
             except Exception as e:
                 print(f"⚠️ Fout bij AT-commando's: {e}")
@@ -61,9 +61,9 @@ def init_modem():
             return True
         except serial.SerialException as e:
             if "Device or resource busy" in str(e):
-                print(f"⚠️ 4G-modem is in gebruik door een ander proces. Wacht 3 seconden...")
+                print(f"⚠️ 4G-modem is in gebruik door een ander proces. Wacht 2 seconden...")
             else:
-                print(f"📡 4G-modem niet gevonden. Opnieuw proberen in 3 seconden...")
+                print(f"🛱 4G-modem niet gevonden. Opnieuw proberen in 2 seconden...")
             time.sleep(2)
         except Exception as e:
             print(f"⚠️ Onverwachte fout bij modem init: {e}")
@@ -103,20 +103,29 @@ def open_serial():
             return ser
         except Exception as e:
             print(f"⚠️ Kan RS485-poort niet openen: {e}")
-            print("🔁 Opnieuw proberen in 6 seconden...")
+            print("🔁 Opnieuw proberen in 2 seconden...")
             time.sleep(2)
 
 def main():
     init_modem()
     ser = open_serial()
+    last_watchdog = time.time()
 
     while True:
         try:
-            raw = ser.read(64)
-            if len(raw) != 64:
-                print(f"❌ Data niet beschikbaar of onvolledig ({len(raw)} bytes ontvangen). Wachten 6 seconden...")
-                time.sleep(1)
-                continue
+            start = time.time()
+            while True:
+                raw = ser.read(64)
+                if len(raw) == 64:
+                    break
+                elif time.time() - start > 10:
+                    print("🕒 Timeout bij ser.read(), herstart seriële verbinding...")
+                    try:
+                        ser.close()
+                    except:
+                        pass
+                    ser = open_serial()
+                    start = time.time()
 
             values = []
             for i in range(0, 64, 2):
@@ -124,8 +133,11 @@ def main():
                 values.append(val)
 
             ts = int(time.time())
-
             send_to_influx(values, ts)
+
+            if time.time() - last_watchdog > 10:
+                systemd.daemon.notify("WATCHDOG=1")
+                last_watchdog = time.time()
 
         except serial.SerialException as e:
             print(f"🚫 Serial fout: {e}")
@@ -139,12 +151,12 @@ def main():
             init_modem()
 
         except KeyboardInterrupt:
-            print("🛑 Script handmatig gestopt.")
+            print("🛀 Script handmatig gestopt.")
             break
 
         except Exception as e:
             print(f"❌ Onbekende fout: {e}")
-            print("⏱️ Wachten 6 seconden en doorgaan...")
+            print("⏱️ Wachten 2 seconden en doorgaan...")
             time.sleep(2)
             init_modem()
 
