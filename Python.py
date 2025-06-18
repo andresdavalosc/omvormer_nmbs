@@ -64,10 +64,10 @@ def init_modem():
                 print(f"⚠️ 4G-modem is in gebruik door een ander proces. Wacht 3 seconden...")
             else:
                 print(f"📡 4G-modem niet gevonden. Opnieuw proberen in 3 seconden...")
-            time.sleep(3)
+            time.sleep(2)
         except Exception as e:
             print(f"⚠️ Onverwachte fout bij modem init: {e}")
-            time.sleep(3)
+            time.sleep(2)
 
 def send_to_influx(vals, timestamp):
     lines = []
@@ -104,7 +104,7 @@ def open_serial():
         except Exception as e:
             print(f"⚠️ Kan RS485-poort niet openen: {e}")
             print("🔁 Opnieuw proberen in 6 seconden...")
-            time.sleep(6)
+            time.sleep(2)
 
 def main():
     init_modem()
@@ -115,7 +115,7 @@ def main():
             raw = ser.read(64)
             if len(raw) != 64:
                 print(f"❌ Data niet beschikbaar of onvolledig ({len(raw)} bytes ontvangen). Wachten 6 seconden...")
-                time.sleep(6)
+                time.sleep(1)
                 continue
 
             values = []
@@ -134,7 +134,7 @@ def main():
                 ser.close()
             except:
                 pass
-            time.sleep(6)
+            time.sleep(3)
             ser = open_serial()
             init_modem()
 
@@ -145,7 +145,7 @@ def main():
         except Exception as e:
             print(f"❌ Onbekende fout: {e}")
             print("⏱️ Wachten 6 seconden en doorgaan...")
-            time.sleep(6)
+            time.sleep(2)
             init_modem()
 
 if __name__ == "__main__":
