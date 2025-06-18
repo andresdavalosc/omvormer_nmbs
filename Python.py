@@ -1,8 +1,7 @@
 import serial
 import time
 import requests
-import os
-import subprocess
+import sys
 
 # 🌐 InfluxDB-configuratie
 ORG = "WIE"
@@ -45,6 +44,7 @@ def print_values(vals):
         print(f"{name:<18}: {bin_str}  {dec_str}  {hex_str}")
 
 def init_modem():
+    import serial
     while True:
         try:
             ser = serial.Serial(MODEM_PORT, baudrate=MODEM_BAUDRATE, timeout=1)
@@ -58,9 +58,6 @@ def init_modem():
                 print(f"⚠️ Fout bij AT-commando's: {e}")
             finally:
                 ser.close()
-            # Herlaad systemd services zodra modem OK is
-            print("🔄 Herlaad systemd services...")
-            subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True)
             return True
         except serial.SerialException as e:
             if "Device or resource busy" in str(e):
@@ -93,8 +90,10 @@ def send_to_influx(vals, timestamp):
             print(f"✅ Data verzonden naar InfluxDB @ {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))}")
             print("📦 Verzonden waarden:")
             print_values(vals)
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         print(f"❌ Verbindingsfout met InfluxDB: {e}")
+        print("🚨 Kritieke fout: script stopt zodat systemd kan herstarten.")
+        sys.exit(1)
 
 def open_serial():
     while True:
@@ -108,7 +107,7 @@ def open_serial():
             time.sleep(6)
 
 def main():
-    modem_online = init_modem()
+    init_modem()
     ser = open_serial()
 
     while True:
@@ -126,21 +125,18 @@ def main():
 
             ts = int(time.time())
 
-            # Controleer modemstatus vóór verzenden
-            if modem_online:
-                send_to_influx(values, ts)
-            else:
-                print("📡 Modem offline, sla data niet op. Wacht op verbinding...")
+            send_to_influx(values, ts)
 
         except serial.SerialException as e:
             print(f"🚫 Serial fout: {e}")
-            print("🔁 Herstart RS485-verbinding...")
+            print("🔁 Herstart RS485-verbinding en modem connectie proberen opnieuw...")
             try:
                 ser.close()
             except:
                 pass
             time.sleep(6)
             ser = open_serial()
+            init_modem()
 
         except KeyboardInterrupt:
             print("🛑 Script handmatig gestopt.")
@@ -148,12 +144,9 @@ def main():
 
         except Exception as e:
             print(f"❌ Onbekende fout: {e}")
-            print("⏱️ Wachten 6s en doorgaan...")
-
-        # Controle modemstatus herhaaldelijk checken
-        modem_online = init_modem()
-
-        time.sleep(6)
+            print("⏱️ Wachten 6 seconden en doorgaan...")
+            time.sleep(6)
+            init_modem()
 
 if __name__ == "__main__":
     main()
