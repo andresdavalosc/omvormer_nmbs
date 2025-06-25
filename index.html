@@ -305,7 +305,17 @@
       return Papa.parse(csvText, { header: true, dynamicTyping: true }).data.filter(r => r._time && r._value !== undefined);
     }
 
-    // Tabel vullen
+    // Hulp om 16-bit waarde van big endian naar little endian om te zetten
+    function toLittleEndian16(value) {
+      // Zorg ervoor dat we met 16-bit unsigned integers werken
+      const bigEndianBuffer = new ArrayBuffer(2);
+      const view = new DataView(bigEndianBuffer);
+      view.setUint16(0, value, false); // schrijf als big endian (false)
+
+      // Lees als little endian
+      return view.getUint16(0, true); // true = little endian interpretatie
+    }
+
     async function updateTable() {
       try {
         const data = await fetchData();
@@ -314,9 +324,12 @@
         for (const name of measurementNames) {
           let value = data[name];
           if (value === undefined) value = 0;
-          const bin = binair(value);
-          const dec = value;
-          const hx = hex(value);
+
+          const littleEndianValue = toLittleEndian16(value);
+          const bin = binair(littleEndianValue);
+          const dec = littleEndianValue;
+          const hx = hex(littleEndianValue);
+
           const tr = document.createElement("tr");
           tr.innerHTML = `<td>${name}</td><td>${bin}</td><td>${dec}</td><td>${hx}</td>`;
           tbody.appendChild(tr);
@@ -326,6 +339,7 @@
         console.warn("Fout bij updaten tabel:", e);
       }
     }
+
 
     // Grafieken bouwen en updaten
     let charts = {};
