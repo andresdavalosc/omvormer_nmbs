@@ -426,19 +426,21 @@
         alert("Selecteer een datum om te downloaden");
         return;
       }
+
       const downloadStatus = document.getElementById("downloadStatus");
       downloadStatus.textContent = "Bezig met downloaden...";
-      try {
-        const nowISO = new Date().toISOString();
-        const fluxQuery = `
-          from(bucket: "${BUCKET}")
-            |> range(start: ${startDate}T00:00:00Z, stop: ${nowISO})
-            |> filter(fn: (r) => contains(value: r["_measurement"], set: [${measurementNames.map(name => `"${name}"`).join(", ")}]))
-            |> pivot(rowKey:["_time"], columnKey: ["_measurement"], valueColumn: "_value")
-            |> keep(columns: ["_time", ${measurementNames.map(name => `"${name}"`).join(", ")}])
-        `;
 
-        const response = await fetch("https://eu-central-1-1.aws.cloud2.influxdata.com/api/v2/query?org=" + ORG, {
+      try {
+        const fluxQuery = `
+      from(bucket: "${BUCKET}")
+        |> range(start: ${startDate}T00:00:00Z)
+        |> filter(fn: (r) => contains(value: r["_measurement"], set: [${measurementNames.map(n => `"${n}"`).join(", ")}]))
+        |> filter(fn: (r) => r["_field"] == "value")
+        |> pivot(rowKey:["_time"], columnKey: ["_measurement"], valueColumn: "_value")
+        |> sort(columns: ["_time"])
+    `;
+
+        const response = await fetch(INFLUX_URL, {
           method: "POST",
           headers: {
             Authorization: `Token ${TOKEN}`,
@@ -449,33 +451,54 @@
         });
 
         if (!response.ok) {
-          throw new Error(`Fout bij ophalen data: ${response.statusText}`);
+          throw new Error("Fout bij ophalen van logdata: " + response.statusText);
         }
 
         const csvText = await response.text();
+        const parsed = Papa.parse(csvText, { header: true, dynamicTyping: true });
 
-        // Blob maken en download triggeren
-        const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+        const convertedData = parsed.data.map(row => {
+          const newRow = {};
+
+          // Extract datum en tijd uit _time
+          if (row._time) {
+            const dateObj = new Date(row._time);
+            newRow["Datum"] = dateObj.toLocaleDateString("nl-BE"); // bijv. 1/07/2025
+            newRow["Tijd"] = dateObj.toLocaleTimeString("nl-BE", { hour12: false }); // bijv. 14:23:45
+          }
+
+          // Alleen de metingen behouden en converteren
+          for (const name of measurementNames) {
+            if (row[name] !== undefined && row[name] !== null && !isNaN(row[name])) {
+              newRow[name] = toLittleEndian16(row[name]);
+            }
+          }
+
+          return newRow;
+        });
+
+        const finalCsv = Papa.unparse(convertedData);
+
+        const blob = new Blob([finalCsv], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
-
         const a = document.createElement("a");
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         a.href = url;
-        a.download = `OmvormerDataVanaf_${startDate}.csv`;
+        a.download = `omvormer_log_${startDate}.csv`;
+        a.style.display = "none";
         document.body.appendChild(a);
         a.click();
-        a.remove();
-
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        downloadStatus.textContent = "Download voltooid!";
-        setTimeout(() => {
-          downloadStatus.textContent = "";
-        }, 4000);
-
+        downloadStatus.textContent = "✅ Download voltooid";
       } catch (e) {
-        downloadStatus.textContent = "Fout: " + e.message;
+        console.error(e);
+        downloadStatus.textContent = "❌ Fout bij downloaden";
       }
     }
+
 
     document.getElementById("downloadBtn").addEventListener("click", downloadLogData);
 
